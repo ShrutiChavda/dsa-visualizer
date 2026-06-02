@@ -1,7 +1,7 @@
 """
 DSA Visualizer - FastAPI Application
 """
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import router
 
