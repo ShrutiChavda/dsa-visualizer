@@ -68,7 +68,6 @@ function CodePanel({
 }) {
   const lines = code.split("\n");
   const highlightedVars = new Set(currentEvent?.highlight_vars || []);
-  const inlineAnnotations = currentEvent?.metadata?.inline_notes || "";
 
   return (
     <div className="flex flex-col h-full">
@@ -90,8 +89,8 @@ function CodePanel({
             {lines.map((_, i) => (
               <div
                 key={i}
-                className={`transition-colors ${
-                  currentLine === i + 1 ? "text-cyan-400 font-bold" : ""
+                className={`transition-colors h-6 flex items-center justify-end ${
+                  currentLine === i + 1 ? "text-amber-400 font-bold bg-amber-400/10" : ""
                 }`}
               >
                 {i + 1}
@@ -100,12 +99,12 @@ function CodePanel({
           </div>
 
           {/* Code content */}
-          <div className="relative flex-1">
+          <div className="relative flex-1 overflow-x-auto">
             {/* Highlight current line */}
             {currentLine && (
               <motion.div
                 layoutId="line-highlight"
-                className="absolute left-0 right-0 bg-cyan-400/12 border-l-4 border-cyan-400/80 pointer-events-none shadow-[0_0_20px_rgba(34,211,238,0.2)]"
+                className="absolute left-0 right-0 bg-amber-400/10 border-l-4 border-amber-400 pointer-events-none"
                 style={{
                   top: `${(currentLine - 1) * 1.5}rem`,
                   height: "1.5rem",
@@ -117,68 +116,66 @@ function CodePanel({
 
             {/* Code with inline annotations */}
             <div className="relative p-3">
-              {lines.map((line, lineIdx) => (
-                <div key={lineIdx} className="relative group">
-                  <textarea
-                    className="w-full bg-transparent text-slate-200 outline-none caret-cyan-400 resize-none overflow-hidden"
-                    value={line}
-                    onChange={(e) => {
-                      const newLines = [...lines];
-                      newLines[lineIdx] = e.target.value;
-                      onCodeChange(newLines.join("\n"));
-                    }}
-                    readOnly={readOnly}
-                    spellCheck={false}
-                    style={{ minHeight: "1.5rem", lineHeight: "1.5rem" }}
-                  />
+              {lines.map((line, lineIdx) => {
+                const isCurrentLine = currentLine === lineIdx + 1;
+                const lineVars = new Map<number, { var: string; value: string; color: string }>();
 
-                  {/* Inline annotation for current line */}
-                  {currentLine === lineIdx + 1 && currentEvent && (
-                    <motion.div
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      className="absolute left-0 top-0 -translate-y-6 text-[9px] font-mono px-2 py-1 rounded bg-cyan-400/20 border border-cyan-400/40 text-cyan-300 whitespace-nowrap pointer-events-none"
-                    >
-                      {currentEvent.event_type === "loop_iter"
-                        ? `🔄 Iteration: ${currentEvent.metadata?.value}`
-                        : currentEvent.event_type === "variable_assign"
-                        ? `📝 ${currentEvent.description.split("=")[0]?.trim()} = ${currentEvent.result_display}`
-                        : currentEvent.description}
-                    </motion.div>
-                  )}
+                // Find variables in this line that are highlighted
+                if (isCurrentLine && currentEvent) {
+                  highlightedVars.forEach((varName) => {
+                    const regex = new RegExp(`\\b${varName}\\b`, "g");
+                    let match;
+                    while ((match = regex.exec(line)) !== null) {
+                      lineVars.set(match.index, {
+                        var: varName,
+                        value: currentEvent.result_display || "",
+                        color: currentEvent.color || "#fbbf24",
+                      });
+                    }
+                  });
+                }
 
-                  {/* Variable highlighting circles */}
-                  {currentEvent &&
-                    highlightedVars.size > 0 &&
-                    Array.from(highlightedVars).map((varName) => {
-                      const regex = new RegExp(`\\b${varName}\\b`, "g");
-                      let match;
-                      const matches = [];
-                      while ((match = regex.exec(line)) !== null) {
-                        matches.push(match);
-                      }
-                      return matches.map((m, idx) => (
-                        <motion.span
-                          key={`${lineIdx}-${varName}-${idx}`}
-                          className="absolute text-lg leading-none"
-                          style={{
-                            left: `${m.index * 0.6}em`,
-                            top: "0.2em",
-                          }}
-                          animate={{
-                            scale: [1, 1.3, 1],
-                          }}
-                          transition={{
-                            repeat: 1,
-                            duration: 0.5,
-                          }}
-                        >
-                          ●
-                        </motion.span>
-                      ));
-                    })}
-                </div>
-              ))}
+                return (
+                  <div key={lineIdx} className="relative group h-6 flex items-center">
+                    <textarea
+                      className="flex-1 bg-transparent text-amber-100 outline-none caret-amber-400 resize-none overflow-hidden"
+                      value={line}
+                      onChange={(e) => {
+                        const newLines = [...lines];
+                        newLines[lineIdx] = e.target.value;
+                        onCodeChange(newLines.join("\n"));
+                      }}
+                      readOnly={readOnly}
+                      spellCheck={false}
+                      style={{ minHeight: "1.5rem", lineHeight: "1.5rem" }}
+                    />
+
+                    {/* Inline annotations - appear right next to the line */}
+                    {isCurrentLine && currentEvent && (
+                      <motion.div
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -10 }}
+                        className="ml-4 flex items-center gap-2 whitespace-nowrap shrink-0"
+                      >
+                        <span className="text-lg">{currentEvent.icon}</span>
+                        <div className="flex items-center gap-1 px-2 py-1 rounded-lg border border-amber-400/50 bg-amber-400/15">
+                          <span className="text-xs font-bold text-amber-100">
+                            {currentEvent.event_type === "loop_iter"
+                              ? `Loop: ${currentEvent.metadata?.value}`
+                              : currentEvent.event_type === "variable_assign"
+                              ? `${highlightedVars.size > 0 ? Array.from(highlightedVars)[0] : "var"}`
+                              : ""}
+                          </span>
+                          <span className="text-amber-300 font-mono text-xs font-bold">
+                            = {currentEvent.result_display}
+                          </span>
+                        </div>
+                      </motion.div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -217,7 +214,7 @@ function EventCard({
       className={`
         cursor-pointer rounded-lg border p-3 transition-all
         ${isActive
-          ? "border-cyan-400/60 bg-cyan-400/10 shadow-[0_0_20px_rgba(34,211,238,0.15)]"
+          ? "border-amber-400/60 bg-amber-400/10 shadow-[0_0_20px_rgba(251,191,36,0.15)]"
           : `${categoryColors[category] || "border-white/5 bg-white/2"} hover:border-white/20`
         }
       `}
@@ -240,11 +237,11 @@ function EventCard({
             >
               {category}
             </span>
-            <span className="text[10px] text-slate-600 font-mono">
+            <span className="text-[10px] text-slate-600 font-mono">
               #{event.step}
             </span>
           </div>
-          <p className="text-xs text-slate-300 leading-snug truncate">
+          <p className="text-xs text-amber-100 leading-snug truncate">
             {event.description}
           </p>
           {event.expression && (
@@ -288,7 +285,7 @@ function VariablesPanel({ event }: { event: ExecutionEvent | null }) {
             className={`
               rounded-lg border p-2.5 transition-all
               ${highlighted.has(v.name)
-                ? "border-cyan-400/50 bg-cyan-400/8 shadow-[0_0_15px_rgba(34,211,238,0.1)]"
+                ? "border-amber-400/50 bg-amber-400/8 shadow-[0_0_15px_rgba(251,191,36,0.1)]"
                 : "border-white/5 bg-white/2"
               }
             `}
@@ -298,15 +295,15 @@ function VariablesPanel({ event }: { event: ExecutionEvent | null }) {
                 <div className="flex items-center gap-1.5 mb-1">
                   {highlighted.has(v.name) && (
                     <motion.div
-                      className="w-1.5 h-1.5 rounded-full bg-cyan-400"
+                      className="w-2 h-2 rounded-full bg-amber-400"
                       animate={{ scale: [1, 1.5, 1] }}
                       transition={{ repeat: 1, duration: 0.4 }}
                     />
                   )}
-                  <span className="text-xs font-mono font-bold text-slate-300">
+                  <span className="text-xs font-mono font-bold text-amber-100">
                     {v.name}
                   </span>
-                  <span className="text-[9px] text-slate-600 border border-white/10 px-1 rounded">
+                  <span className="text-[9px] text-amber-400/60 border border-amber-400/30 px-1 rounded">
                     {v.type}
                   </span>
                 </div>
@@ -319,8 +316,8 @@ function VariablesPanel({ event }: { event: ExecutionEvent | null }) {
 
       {/* Output */}
       {event.memory.output.length > 0 && (
-        <div className="border border-white/5 rounded-lg p-2.5 bg-black/20">
-          <div className="text-[9px] uppercase tracking-widest text-slate-600 mb-2">
+        <div className="border border-amber-400/30 rounded-lg p-2.5 bg-amber-400/8">
+          <div className="text-[9px] uppercase tracking-widest text-amber-400/70 mb-2 font-bold">
             📤 Output
           </div>
           {event.memory.output.map((line, i) => (
@@ -328,7 +325,7 @@ function VariablesPanel({ event }: { event: ExecutionEvent | null }) {
               key={i}
               initial={{ opacity: 0, y: -5 }}
               animate={{ opacity: 1, y: 0 }}
-              className="font-mono text-xs text-emerald-400"
+              className="font-mono text-xs text-emerald-300"
             >
               &gt; {line}
             </motion.div>
@@ -347,9 +344,9 @@ function VariableValueDisplay({ value, name }: { value: unknown; name: string })
           <motion.span
             key={`${name}-${i}`}
             layout
-            className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-white/5"
+            className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-amber-100 border border-amber-400/30"
           >
-            <span className="text-slate-600 text-[8px]">[{i}]</span>{" "}
+            <span className="text-amber-400/60 text-[8px]">[{i}]</span>{" "}
             {formatValue(item)}
           </motion.span>
         ))}
@@ -363,20 +360,20 @@ function VariableValueDisplay({ value, name }: { value: unknown; name: string })
       <div className="space-y-0.5 mt-1">
         {entries.map(([k, v]) => (
           <div key={k} className="flex gap-1 text-[10px] font-mono">
-            <span className="text-violet-400">{formatValue(k)}</span>
-            <span className="text-slate-600">:</span>
-            <span className="text-cyan-300">{formatValue(v)}</span>
+            <span className="text-violet-300">{formatValue(k)}</span>
+            <span className="text-amber-400/50">:</span>
+            <span className="text-amber-100">{formatValue(v)}</span>
           </div>
         ))}
         {entries.length === 0 && (
-          <span className="text-[10px] font-mono text-slate-600">{"{}"}</span>
+          <span className="text-[10px] font-mono text-amber-400/50">{"{}"}</span>
         )}
       </div>
     );
   }
 
   return (
-    <div className="font-mono text-sm font-bold text-cyan-300 mt-0.5">
+    <div className="font-mono text-sm font-bold text-amber-300 mt-0.5">
       {formatValue(value)}
     </div>
   );
@@ -394,8 +391,8 @@ function MemoryPanel({ event }: { event: ExecutionEvent | null }) {
   return (
     <div className="p-3 space-y-3">
       {/* Current event detail */}
-      <div className="rounded-lg border border-white/8 bg-white/2 p-3">
-        <div className="text-[9px] uppercase tracking-widest text-slate-600 mb-2">
+      <div className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-3">
+        <div className="text-[9px] uppercase tracking-widest text-amber-400/70 mb-2 font-bold">
           Current Event
         </div>
         <div className="flex items-center gap-2 mb-2">
@@ -407,17 +404,17 @@ function MemoryPanel({ event }: { event: ExecutionEvent | null }) {
             >
               {event.event_type.replace(/_/g, " ")}
             </div>
-            <div className="text-xs text-slate-300">{event.description}</div>
+            <div className="text-xs text-amber-100">{event.description}</div>
           </div>
         </div>
         {event.expression && (
-          <div className="bg-black/30 rounded p-2 font-mono text-xs text-cyan-300 break-all">
+          <div className="bg-black/30 rounded p-2 font-mono text-xs text-amber-300 break-all">
             {event.expression}
           </div>
         )}
         {event.result_display !== undefined && event.result_display !== null && (
           <div className="mt-2 flex items-center gap-2">
-            <span className="text-[10px] text-slate-500">Result:</span>
+            <span className="text-[10px] text-amber-400/60">Result:</span>
             <span
               className="font-mono text-sm font-bold"
               style={{ color: event.color }}
@@ -429,25 +426,25 @@ function MemoryPanel({ event }: { event: ExecutionEvent | null }) {
       </div>
 
       {/* Call stack */}
-      <div className="rounded-lg border border-white/5 bg-white/2 p-2.5">
-        <div className="text-[9px] uppercase tracking-widest text-slate-600 mb-2">
+      <div className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-2.5">
+        <div className="text-[9px] uppercase tracking-widest text-amber-400/70 mb-2 font-bold">
           Call Stack
         </div>
         {event.memory.call_stack.map((frame, i) => (
           <div key={i} className="flex items-center gap-2 py-1">
-            <div className="w-1 h-1 rounded-full bg-violet-400 shrink-0" />
-            <span className="font-mono text-xs text-violet-300">{frame}</span>
+            <div className="w-1 h-1 rounded-full bg-amber-400 shrink-0" />
+            <span className="font-mono text-xs text-amber-200">{frame}</span>
           </div>
         ))}
       </div>
 
       {/* Line number */}
       {event.line_number && (
-        <div className="rounded-lg border border-white/5 bg-white/2 p-2.5">
-          <div className="text-[9px] uppercase tracking-widest text-slate-600 mb-1">
+        <div className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-2.5">
+          <div className="text-[9px] uppercase tracking-widest text-amber-400/70 mb-1 font-bold">
             Source Location
           </div>
-          <span className="font-mono text-xs text-slate-400">
+          <span className="font-mono text-xs text-amber-300">
             Line {event.line_number}
           </span>
         </div>
@@ -487,11 +484,17 @@ function PlaybackControls({
 }) {
   const progress = totalSteps > 0 ? (currentStep / (totalSteps - 1)) * 100 : 0;
 
+  const speedLabel = (val: number) => {
+    if (val > 1000) return `${(val / 1000).toFixed(2)}× (slow)`;
+    if (val < 1000) return `-${Math.round((1000 / val) * 10) / 10}×`;
+    return "1×";
+  };
+
   return (
-    <div className="border-t border-white/5 bg-black/20 px-4 py-3">
+    <div className="border-t border-amber-400/20 bg-black/20 px-4 py-3">
       {/* Progress bar */}
       <div
-        className="relative h-1 bg-white/5 rounded-full mb-3 cursor-pointer"
+        className="relative h-1.5 bg-amber-400/20 rounded-full mb-3 cursor-pointer border border-amber-400/30"
         onClick={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           const ratio = (e.clientX - rect.left) / rect.width;
@@ -499,13 +502,13 @@ function PlaybackControls({
         }}
       >
         <motion.div
-          className="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-cyan-400 to-violet-400 rounded-full"
+          className="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-amber-400 to-orange-400 rounded-full"
           style={{ width: `${progress}%` }}
           transition={{ type: "spring", stiffness: 300, damping: 40 }}
         />
         {/* Thumb */}
         <motion.div
-          className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow-[0_0_8px_rgba(34,211,238,0.8)] -ml-1.5"
+          className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.8)] -ml-2"
           style={{ left: `${progress}%` }}
           transition={{ type: "spring", stiffness: 300, damping: 40 }}
         />
@@ -513,7 +516,7 @@ function PlaybackControls({
 
       <div className="flex items-center gap-3">
         {/* Step counter */}
-        <span className="text-[10px] font-mono text-slate-500 tabular-nums w-16 shrink-0">
+        <span className="text-[10px] font-mono text-amber-400/70 tabular-nums w-16 shrink-0 font-bold">
           {currentStep + 1} / {totalSteps}
         </span>
 
@@ -533,8 +536,8 @@ function PlaybackControls({
               w-10 h-10 rounded-xl font-bold text-lg transition-all
               disabled:opacity-30 disabled:cursor-not-allowed
               ${isPlaying
-                ? "bg-rose-500/20 border border-rose-500/40 text-rose-400 hover:bg-rose-500/30"
-                : "bg-cyan-500/20 border border-cyan-500/40 text-cyan-400 hover:bg-cyan-500/30"
+                ? "bg-rose-500/20 border border-rose-500/40 text-rose-300 hover:bg-rose-500/30"
+                : "bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30"
               }
             `}
             whileHover={{ scale: 1.05 }}
@@ -549,14 +552,17 @@ function PlaybackControls({
         </div>
 
         {/* Speed control */}
-        <div className="flex items-center gap-1.5 w-32 shrink-0 justify-end">
-          <span className="text-[10px] text-slate-600">Speed</span>
+        <div className="flex items-center gap-1.5 w-48 shrink-0 justify-end">
+          <span className="text-[10px] text-amber-400/70 font-bold">Speed</span>
           <select
             value={speed}
             onChange={(e) => onSpeedChange(Number(e.target.value))}
-            className="bg-white/5 border border-white/10 text-slate-300 text-[10px] rounded px-1.5 py-0.5 outline-none hover:bg-white/10 cursor-pointer"
+            className="bg-amber-500/10 border border-amber-400/40 text-amber-300 text-[10px] rounded px-2 py-1 outline-none hover:bg-amber-500/20 cursor-pointer font-bold"
           >
-            <option value={4000}>0.25×</option>
+            <option value={6000}>-10×</option>
+            <option value={5000}>-5×</option>
+            <option value={4000}>-2×</option>
+            <option value={3000}>-1×</option>
             <option value={2000}>0.5×</option>
             <option value={1000}>1×</option>
             <option value={500}>2×</option>
@@ -584,9 +590,9 @@ function CtrlBtn({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 text-slate-400
-                 hover:bg-white/10 hover:text-slate-200 transition-all
-                 disabled:opacity-30 disabled:cursor-not-allowed text-sm"
+      className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-400/40 text-amber-400
+                 hover:bg-amber-500/20 hover:text-amber-300 transition-all
+                 disabled:opacity-30 disabled:cursor-not-allowed text-sm font-bold"
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
     >
@@ -661,19 +667,19 @@ for i in range(len(nums)):
   };
 
   return (
-    <div className="min-h-screen bg-[#080c14] text-slate-100 flex flex-col" style={{
+    <div className="min-h-screen bg-[#0f0a1a] text-amber-100 flex flex-col" style={{
       fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-      background: "radial-gradient(ellipse at 20% 0%, #0a1628 0%, #080c14 60%)",
+      background: "radial-gradient(ellipse at 20% 0%, #1a0f2e 0%, #0f0a1a 60%)",
     }}>
       {/* ── Header ── */}
-      <header className="border-b border-white/5 bg-black/30 backdrop-blur-sm px-4 py-3 flex items-center gap-4 shrink-0 z-10">
+      <header className="border-b border-amber-400/20 bg-black/40 backdrop-blur-sm px-4 py-3 flex items-center gap-4 shrink-0 z-10">
         <div className="flex items-center gap-3">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-400 to-violet-500 flex items-center justify-center text-sm font-black">
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-sm font-black text-black">
             ⚡
           </div>
           <div>
-            <h1 className="text-sm font-bold text-white tracking-wide">DSA Visualizer</h1>
-            <p className="text-[9px] text-slate-500 uppercase tracking-widest">
+            <h1 className="text-sm font-bold text-amber-300 tracking-wide">DSA Visualizer</h1>
+            <p className="text-[9px] text-amber-400/60 uppercase tracking-widest">
               Step-by-step code execution
             </p>
           </div>
@@ -686,17 +692,17 @@ for i in range(len(nums)):
           disabled={loading}
           className="
             flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold
-            bg-gradient-to-r from-cyan-500/20 to-violet-500/20
-            border border-cyan-500/30
-            text-cyan-300 hover:text-white
-            hover:from-cyan-500/30 hover:to-violet-500/30
+            bg-gradient-to-r from-amber-500/20 to-orange-500/20
+            border border-amber-400/40
+            text-amber-300 hover:text-amber-200
+            hover:from-amber-500/30 hover:to-orange-500/30
             disabled:opacity-50 disabled:cursor-not-allowed
             transition-all
           "
         >
           {loading ? (
             <>
-              <span className="inline-block w-3 h-3 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin" />
+              <span className="inline-block w-3 h-3 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin" />
               Analyzing…
             </>
           ) : (
@@ -706,7 +712,7 @@ for i in range(len(nums)):
 
         <button
           onClick={() => setSidebarOpen((x) => !x)}
-          className="w-7 h-7 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-white text-sm flex items-center justify-center"
+          className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-400/40 text-amber-400 hover:text-amber-300 text-sm flex items-center justify-center transition-all"
         >
           ☰
         </button>
@@ -721,10 +727,10 @@ for i in range(len(nums)):
               animate={{ width: 220, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
               transition={{ type: "spring", stiffness: 300, damping: 40 }}
-              className="border-r border-white/5 bg-black/20 flex flex-col overflow-hidden shrink-0"
+              className="border-r border-amber-400/20 bg-black/20 flex flex-col overflow-hidden shrink-0"
             >
-              <div className="px-3 py-2.5 border-b border-white/5">
-                <span className="text-[9px] uppercase tracking-widest text-slate-600 font-bold">
+              <div className="px-3 py-2.5 border-b border-amber-400/20">
+                <span className="text-[9px] uppercase tracking-widest text-amber-400/70 font-bold">
                   Problems
                 </span>
               </div>
@@ -736,8 +742,8 @@ for i in range(len(nums)):
                     className={`
                       w-full text-left rounded-lg p-2.5 transition-all border
                       ${selectedProblem === p.id
-                        ? "border-cyan-500/40 bg-cyan-500/8 text-white"
-                        : "border-transparent hover:border-white/10 hover:bg-white/3 text-slate-400 hover:text-slate-200"
+                        ? "border-amber-400/40 bg-amber-400/10 text-amber-100"
+                        : "border-transparent hover:border-amber-400/20 hover:bg-amber-500/5 text-amber-400/70 hover:text-amber-300"
                       }
                     `}
                   >
@@ -746,7 +752,13 @@ for i in range(len(nums)):
                     </div>
                     <div className="flex items-center gap-1.5">
                       <span
-                        className={`text-[8px] font-bold px-1.5 py-0.5 rounded border ${DIFFICULTY_COLORS[p.difficulty]}`}
+                        className={`text-[8px] font-bold px-1.5 py-0.5 rounded border ${
+                          p.difficulty === "Easy"
+                            ? "text-emerald-400 border-emerald-400/30 bg-emerald-400/10"
+                            : p.difficulty === "Medium"
+                            ? "text-amber-400 border-amber-400/30 bg-amber-400/10"
+                            : "text-red-400 border-red-400/30 bg-red-400/10"
+                        }`}
                       >
                         {p.difficulty}
                       </span>
@@ -762,7 +774,7 @@ for i in range(len(nums)):
         <div className="flex-1 flex min-w-0 min-h-0">
           {/* Code panel (left 40%) */}
           <div
-            className="border-r border-white/5 flex flex-col"
+            className="border-r border-amber-400/20 flex flex-col"
             style={{ width: "40%" }}
           >
             <CodePanel
@@ -790,21 +802,21 @@ for i in range(len(nums)):
           {/* Right panel (60%) */}
           <div className="flex-1 flex flex-col min-w-0 min-h-0">
             {/* Tabs */}
-            <div className="flex border-b border-white/5 bg-black/20 shrink-0">
+            <div className="flex border-b border-amber-400/20 bg-black/20 shrink-0">
               {(["timeline", "variables", "memory"] as const).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={`
                     px-4 py-2.5 text-[10px] uppercase tracking-widest font-bold transition-all relative
-                    ${activeTab === tab ? "text-cyan-400" : "text-slate-600 hover:text-slate-400"}
+                    ${activeTab === tab ? "text-amber-400" : "text-amber-400/50 hover:text-amber-400"}
                   `}
                 >
                   {tab === "timeline" ? "⏱ Timeline" : tab === "variables" ? "📦 Variables" : "🧠 Memory"}
                   {activeTab === tab && (
                     <motion.div
                       layoutId="tab-indicator"
-                      className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-400 to-transparent"
+                      className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-amber-400 to-transparent"
                     />
                   )}
                 </button>
@@ -812,7 +824,7 @@ for i in range(len(nums)):
 
               <div className="ml-auto px-3 flex items-center">
                 {totalSteps > 0 && (
-                  <span className="text-[9px] font-mono text-slate-600">
+                  <span className="text-[9px] font-mono text-amber-400/70 font-bold">
                     {totalSteps} steps
                   </span>
                 )}
@@ -826,18 +838,18 @@ for i in range(len(nums)):
                   {events.length === 0 && !loading && (
                     <div className="flex flex-col items-center justify-center py-16 text-center">
                       <div className="text-4xl mb-3">⚡</div>
-                      <p className="text-slate-500 text-sm">
-                        Press <span className="text-cyan-400">Run & Visualize</span> to start
+                      <p className="text-amber-400/70 text-sm">
+                        Press <span className="text-amber-300 font-bold">Run & Visualize</span> to start
                       </p>
-                      <p className="text-slate-600 text-xs mt-1">
+                      <p className="text-amber-400/50 text-xs mt-1">
                         Or select a problem from the sidebar
                       </p>
                     </div>
                   )}
 
                   {loading && (
-                    <div className="flex items-center justify-center py-16 gap-3 text-slate-500 text-sm">
-                      <span className="inline-block w-4 h-4 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin" />
+                    <div className="flex items-center justify-center py-16 gap-3 text-amber-400/70 text-sm">
+                      <span className="inline-block w-4 h-4 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin" />
                       Analyzing code…
                     </div>
                   )}
@@ -883,43 +895,6 @@ for i in range(len(nums)):
           </div>
         </div>
       </div>
-
-      {/* ── Current Step Banner ── */}
-      <AnimatePresence>
-        {currentEvent && (
-          <motion.div
-            key={currentEvent.step}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-96"
-          >
-            <div
-              className="flex items-center gap-3 px-4 py-3 rounded-xl border backdrop-blur-md shadow-xl text-sm font-mono"
-              style={{
-                borderColor: `${currentEvent.color}40`,
-                background: `linear-gradient(135deg, ${currentEvent.color}12, black)`,
-                boxShadow: `0 4px 30px ${currentEvent.color}25`,
-              }}
-            >
-              <span className="text-lg">{currentEvent.icon}</span>
-              <div className="flex-1">
-                <div className="text-slate-300">{currentEvent.description}</div>
-                {currentEvent.expression && (
-                  <code className="text-[11px]" style={{ color: currentEvent.color }}>
-                    {currentEvent.expression}
-                  </code>
-                )}
-              </div>
-              {currentEvent.result_display && (
-                <code style={{ color: currentEvent.color }} className="text-xs font-bold">
-                  → {currentEvent.result_display}
-                </code>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }
