@@ -57,14 +57,18 @@ function CodePanel({
   code,
   onCodeChange,
   currentLine,
+  currentEvent,
   readOnly = false,
 }: {
   code: string;
   onCodeChange: (c: string) => void;
   currentLine?: number;
+  currentEvent?: ExecutionEvent | null;
   readOnly?: boolean;
 }) {
   const lines = code.split("\n");
+  const highlightedVars = new Set(currentEvent?.highlight_vars || []);
+  const inlineAnnotations = currentEvent?.metadata?.inline_notes || "";
 
   return (
     <div className="flex flex-col h-full">
@@ -87,7 +91,7 @@ function CodePanel({
               <div
                 key={i}
                 className={`transition-colors ${
-                  currentLine === i + 1 ? "text-cyan-400" : ""
+                  currentLine === i + 1 ? "text-cyan-400 font-bold" : ""
                 }`}
               >
                 {i + 1}
@@ -101,7 +105,7 @@ function CodePanel({
             {currentLine && (
               <motion.div
                 layoutId="line-highlight"
-                className="absolute left-0 right-0 bg-cyan-400/8 border-l-2 border-cyan-400/60 pointer-events-none"
+                className="absolute left-0 right-0 bg-cyan-400/12 border-l-4 border-cyan-400/80 pointer-events-none shadow-[0_0_20px_rgba(34,211,238,0.2)]"
                 style={{
                   top: `${(currentLine - 1) * 1.5}rem`,
                   height: "1.5rem",
@@ -110,14 +114,72 @@ function CodePanel({
                 transition={{ type: "spring", stiffness: 400, damping: 40 }}
               />
             )}
-            <textarea
-              className="w-full h-full bg-transparent text-slate-200 p-3 resize-none outline-none caret-cyan-400"
-              value={code}
-              onChange={(e) => onCodeChange(e.target.value)}
-              readOnly={readOnly}
-              spellCheck={false}
-              style={{ minHeight: "100%", lineHeight: "1.5rem" }}
-            />
+
+            {/* Code with inline annotations */}
+            <div className="relative p-3">
+              {lines.map((line, lineIdx) => (
+                <div key={lineIdx} className="relative group">
+                  <textarea
+                    className="w-full bg-transparent text-slate-200 outline-none caret-cyan-400 resize-none overflow-hidden"
+                    value={line}
+                    onChange={(e) => {
+                      const newLines = [...lines];
+                      newLines[lineIdx] = e.target.value;
+                      onCodeChange(newLines.join("\n"));
+                    }}
+                    readOnly={readOnly}
+                    spellCheck={false}
+                    style={{ minHeight: "1.5rem", lineHeight: "1.5rem" }}
+                  />
+
+                  {/* Inline annotation for current line */}
+                  {currentLine === lineIdx + 1 && currentEvent && (
+                    <motion.div
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className="absolute left-0 top-0 -translate-y-6 text-[9px] font-mono px-2 py-1 rounded bg-cyan-400/20 border border-cyan-400/40 text-cyan-300 whitespace-nowrap pointer-events-none"
+                    >
+                      {currentEvent.event_type === "loop_iter"
+                        ? `🔄 Iteration: ${currentEvent.metadata?.value}`
+                        : currentEvent.event_type === "variable_assign"
+                        ? `📝 ${currentEvent.description.split("=")[0]?.trim()} = ${currentEvent.result_display}`
+                        : currentEvent.description}
+                    </motion.div>
+                  )}
+
+                  {/* Variable highlighting circles */}
+                  {currentEvent &&
+                    highlightedVars.size > 0 &&
+                    Array.from(highlightedVars).map((varName) => {
+                      const regex = new RegExp(`\\b${varName}\\b`, "g");
+                      let match;
+                      const matches = [];
+                      while ((match = regex.exec(line)) !== null) {
+                        matches.push(match);
+                      }
+                      return matches.map((m, idx) => (
+                        <motion.span
+                          key={`${lineIdx}-${varName}-${idx}`}
+                          className="absolute text-lg leading-none"
+                          style={{
+                            left: `${m.index * 0.6}em`,
+                            top: "0.2em",
+                          }}
+                          animate={{
+                            scale: [1, 1.3, 1],
+                          }}
+                          transition={{
+                            repeat: 1,
+                            duration: 0.5,
+                          }}
+                        >
+                          ●
+                        </motion.span>
+                      ));
+                    })}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -178,7 +240,7 @@ function EventCard({
             >
               {category}
             </span>
-            <span className="text-[10px] text-slate-600 font-mono">
+            <span className="text[10px] text-slate-600 font-mono">
               #{event.step}
             </span>
           </div>
@@ -259,12 +321,17 @@ function VariablesPanel({ event }: { event: ExecutionEvent | null }) {
       {event.memory.output.length > 0 && (
         <div className="border border-white/5 rounded-lg p-2.5 bg-black/20">
           <div className="text-[9px] uppercase tracking-widest text-slate-600 mb-2">
-            Output
+            📤 Output
           </div>
           {event.memory.output.map((line, i) => (
-            <div key={i} className="font-mono text-xs text-emerald-400">
-              {line}
-            </div>
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="font-mono text-xs text-emerald-400"
+            >
+              &gt; {line}
+            </motion.div>
           ))}
         </div>
       )}
@@ -482,17 +549,18 @@ function PlaybackControls({
         </div>
 
         {/* Speed control */}
-        <div className="flex items-center gap-1.5 w-24 shrink-0 justify-end">
+        <div className="flex items-center gap-1.5 w-32 shrink-0 justify-end">
           <span className="text-[10px] text-slate-600">Speed</span>
           <select
             value={speed}
             onChange={(e) => onSpeedChange(Number(e.target.value))}
-            className="bg-white/5 border border-white/10 text-slate-300 text-[10px] rounded px-1.5 py-0.5 outline-none"
+            className="bg-white/5 border border-white/10 text-slate-300 text-[10px] rounded px-1.5 py-0.5 outline-none hover:bg-white/10 cursor-pointer"
           >
-            <option value={1500}>0.5×</option>
-            <option value={800}>1×</option>
-            <option value={400}>2×</option>
-            <option value={200}>4×</option>
+            <option value={4000}>0.25×</option>
+            <option value={2000}>0.5×</option>
+            <option value={1000}>1×</option>
+            <option value={500}>2×</option>
+            <option value={250}>4×</option>
           </select>
         </div>
       </div>
@@ -543,7 +611,7 @@ for i in range(len(nums)):
 
   const [problems, setProblems] = useState<ProblemListItem[]>([]);
   const [selectedProblem, setSelectedProblem] = useState<string | null>(null);
-  const [speed, setSpeed] = useState(800);
+  const [speed, setSpeed] = useState(1000);
   const [activeTab, setActiveTab] = useState<"timeline" | "variables" | "memory">("timeline");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -701,6 +769,7 @@ for i in range(len(nums)):
               code={code}
               onCodeChange={setCode}
               currentLine={currentEvent?.line_number}
+              currentEvent={currentEvent}
             />
 
             {/* Error */}
@@ -823,23 +892,29 @@ for i in range(len(nums)):
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50"
+            className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-96"
           >
             <div
-              className="flex items-center gap-3 px-4 py-2 rounded-xl border backdrop-blur-md shadow-xl text-sm font-mono"
+              className="flex items-center gap-3 px-4 py-3 rounded-xl border backdrop-blur-md shadow-xl text-sm font-mono"
               style={{
                 borderColor: `${currentEvent.color}40`,
                 background: `linear-gradient(135deg, ${currentEvent.color}12, black)`,
                 boxShadow: `0 4px 30px ${currentEvent.color}25`,
               }}
             >
-              <span className="text-base">{currentEvent.icon}</span>
-              <span className="text-slate-300">{currentEvent.description}</span>
-              {currentEvent.expression && (
-                <>
-                  <span className="text-slate-600">→</span>
-                  <code style={{ color: currentEvent.color }}>{currentEvent.expression}</code>
-                </>
+              <span className="text-lg">{currentEvent.icon}</span>
+              <div className="flex-1">
+                <div className="text-slate-300">{currentEvent.description}</div>
+                {currentEvent.expression && (
+                  <code className="text-[11px]" style={{ color: currentEvent.color }}>
+                    {currentEvent.expression}
+                  </code>
+                )}
+              </div>
+              {currentEvent.result_display && (
+                <code style={{ color: currentEvent.color }} className="text-xs font-bold">
+                  → {currentEvent.result_display}
+                </code>
               )}
             </div>
           </motion.div>
