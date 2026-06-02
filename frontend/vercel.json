@@ -4,6 +4,8 @@
   "outputDirectory": ".next",
   "installCommand": "npm ci",
   "env": {
-    "NEXT_PUBLIC_API_URL": "https://your-railway-backend.railway.app/api"
+    "NEXT_PUBLIC_API_URL": {
+      "production": "@dsa-visualizer-api-url"
+    }
   }
 }
