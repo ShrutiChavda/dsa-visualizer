@@ -1,0 +1,13 @@
+# Fly.io configuration
+app = "dsa-visualizer-api"
+
+[build]
+  builder = "docker"
+
+[[services]]
+  internal_port = 8080
+  processes = ["app"]
+
+  [services.http_checks]
+    enabled = true
+    uri = "/health"
