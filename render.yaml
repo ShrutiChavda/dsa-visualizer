@@ -2,9 +2,10 @@
 services:
   - type: web
     name: dsa-visualizer-api
-    runtime: python-3.11
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    runtime: python
+    runtimeVersion: 3.11.7
+    buildCommand: bash build.sh
+    startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
       - key: PYTHONUNBUFFERED
